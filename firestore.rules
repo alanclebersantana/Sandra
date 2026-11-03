@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // Dados da Sandra: só ela (logada) lê e grava
+    match /users/{uid}/{doc=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Vitrine pública: qualquer pessoa vê, só a Sandra altera
+    match /lojas/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Pedidos da loja: cliente só cria (sem login); só a Sandra lê e altera
+    match /lojas/{uid}/pedidos/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['nome','telefone','itens','total','obs','criadoEm','status'])
+                    && request.resource.data.status == 'novo'
+                    && request.resource.data.nome is string && request.resource.data.nome.size() < 120
+                    && request.resource.data.itens is list && request.resource.data.itens.size() < 100;
+      allow read, update, delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
