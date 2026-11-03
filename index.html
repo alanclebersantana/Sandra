@@ -430,12 +430,13 @@ function publicarLoja() {
   pubT = setTimeout(() => FB.db.collection('lojas').doc(USER.uid).set(limpo(dadosLoja())).catch(erroFB), 1500);
 }
 function abrirLoja() {
-  if (USE_FB) return abrirExterno(linkLoja());
-  LOJA_PREVIEW = true; LOJA_ID = 'local'; window.scrollTo(0, 0); iniciarLoja();
+  // abre a vitrine DENTRO do app (o voltar retorna ao app em vez de fechar)
+  if (sheetAberto) fecharSheet();
+  LOJA_PREVIEW = true; LOJA_ID = USE_FB && USER ? USER.uid : 'local'; window.scrollTo(0, 0); iniciarLoja();
 }
 function sairLoja() {
   LOJA_PREVIEW = false; LOJA_ID = null; LUI = {q:'', cat:''}; document.title = CFG.nome + ' · ' + CFG.titulo;
-  $('#nav').style.display = ''; lsLoad(); window.scrollTo(0, 0); render();
+  $('#nav').style.display = ''; window.scrollTo(0, 0); render();
 }
 function linkLoja() { return location.origin + location.pathname + '?loja=' + (USE_FB && USER ? USER.uid : 'local'); }
 
@@ -1353,8 +1354,9 @@ async function iniciarLoja() {
   $('#nav').style.display = 'none';
   $('#app').innerHTML = '<div class="empty" style="padding-top:30vh">Carregando loja…</div>';
   try {
-    if (USE_FB) { const d = await FB.db.collection('lojas').doc(LOJA_ID).get(); if (!d.exists) throw 0; LJ = d.data(); }
-    else { lsLoad(); LJ = dadosLoja(); if (LOJA_PREVIEW && !LJ.produtos.length) toast('Nenhum produto marcado para a loja ainda'); }
+    if (LOJA_PREVIEW) { LJ = dadosLoja(); if (!LJ.produtos.length) toast('Nenhum produto marcado para a vitrine ainda'); }
+    else if (USE_FB) { const d = await FB.db.collection('lojas').doc(LOJA_ID).get(); if (!d.exists) throw 0; LJ = d.data(); }
+    else { lsLoad(); LJ = dadosLoja(); }
   } catch (e) { $('#app').innerHTML = vazio('Loja não encontrada', 'Confira o link com quem te enviou.'); return; }
   document.title = LJ.titulo || 'Loja';
   try { CART = JSON.parse(store.get('ss_cart_' + LOJA_ID) || '{}'); } catch (e) { CART = {}; }
