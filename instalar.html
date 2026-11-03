@@ -169,16 +169,20 @@ function passosPC() {
     <li><div>Clique em <span class="chip">Instalar</span>.</div></li></ol>`;
 }
 
+function instrucaoAbrir() {
+  return `<ol class="passos" style="text-align:left">
+    <li><div>Feche esta página.</div></li>
+    <li><div>Vá até a <b>tela inicial</b> do ${isAndroid || isIOS ? 'celular' : 'computador'} e procure o ícone <b>Sandra Silveira</b> <img src="icon-192.png" alt="" style="width:26px;height:26px;border-radius:7px;vertical-align:middle;margin-left:2px">.</div></li>
+    <li><div>Abra sempre por esse ícone. Na primeira vez, entre com seu e-mail e senha.</div></li>
+  </ol>`;
+}
 function render() {
   const a = $('#acao');
   seta('');
   if (instalado()) {
-    a.innerHTML = `<div class="ok-box"><div class="big">✅</div><div class="cav">O app já está instalado</div><p class="sm muted">Você está usando o app instalado.</p>
-      <a class="btn" href="${APP_URL}">Abrir o app</a></div>`;
+    a.innerHTML = `<div class="ok-box"><div class="big">✅</div><div class="cav">O app já está instalado</div>${instrucaoAbrir()}</div>`;
   } else if (render.instalouAgora) {
-    a.innerHTML = `<div class="ok-box"><div class="big">🎉</div><div class="cav">Instalado!</div>
-      <p class="sm muted">Procure o ícone <b>Sandra Silveira</b> na tela inicial do celular. Na primeira vez, entre com seu e-mail e senha.</p>
-      <a class="btn" href="${APP_URL}">Abrir o app</a></div>`;
+    a.innerHTML = `<div class="ok-box"><div class="big">🎉</div><div class="cav">Instalado!</div>${instrucaoAbrir()}</div>`;
   } else if (escolhida) {
     a.innerHTML = escolhida === 'iphone' ? passosIphone() : escolhida === 'android' ? passosAndroid() : passosPC();
   } else if (isInApp) {
@@ -198,6 +202,7 @@ function render() {
   } else {
     a.innerHTML = esperou ? passosPC() : `<div class="center sm muted" style="padding:14px 0">Preparando a instalação…</div>`;
   }
+  $('#semInstalar').style.display = (instalado() || render.instalouAgora) ? 'none' : '';
   $('#abas').innerHTML = [['android', 'Android'], ['iphone', 'iPhone'], ['pc', 'Computador']]
     .map(([k, n]) => `<button class="aba ${escolhida === k ? 'on' : ''}" onclick="escolher('${k}')">${n}</button>`).join('');
 }
