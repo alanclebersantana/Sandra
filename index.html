@@ -593,22 +593,27 @@ function progressoMetas(m) {
 
 // ---------- navegação ----------
 let V = {tela:'inicio', arg:null}, PILHA = [];
-let HIST = true; try { history.replaceState({app:1}, ''); } catch (e) { HIST = false; }
 const UI = {buscaCli:'', buscaProd:'', catProd:'', filtroProd:'todos', mesV:mesAtual(), filtroV:'mes', mesF:mesAtual(), agMes:mesAtual(), agDia:hoje(), enviados:{}, buscaDiv:'', tplDiv:'promocao'};
 const ABAS = [['inicio','Início'], ['clientes','Clientes'], ['agenda','Agenda'], ['vendas','Vendas'], ['estoque','Estoque'], ['mais','Mais']];
 const PAI = {cliente:'clientes', financeiro:'mais', metas:'mais', pedidos:'mais', mensagens:'mais', config:'mais', divulgar:'mais'};
 
-function hPush() { if (!HIST) return false; try { history.pushState({app:1}, ''); return true; } catch (e) { HIST = false; return false; } }
-function ir(tela, arg) { PILHA.push(V); V = {tela, arg:arg || null}; V.h = hPush(); window.scrollTo(0, 0); render(); }
-function aba(t) { PILHA = []; V = {tela:t, arg:null}; window.scrollTo(0, 0); render(); }
-function voltarInterno() { V = PILHA.pop() || {tela:PAI[V.tela] || 'inicio', arg:null}; window.scrollTo(0, 0); render(); }
-function voltar() { if (V.h && PILHA.length) history.back(); else voltarInterno(); }
+// ---------- navegação: o voltar do celular nunca fecha o app ----------
+function ir(tela, arg) { PILHA.push(V); if (PILHA.length > 60) PILHA.shift(); V = {tela, arg:arg || null}; window.scrollTo(0, 0); render(); }
+function aba(t) {
+  if (V.tela !== t || V.arg) { PILHA.push(V); if (PILHA.length > 60) PILHA.shift(); }
+  V = {tela:t, arg:null}; window.scrollTo(0, 0); render();
+}
+function voltarInterno() {
+  let ant = PILHA.pop();
+  while (ant && ant.tela === V.tela && ant.arg === V.arg) ant = PILHA.pop();
+  V = ant || {tela:PAI[V.tela] || 'inicio', arg:null}; window.scrollTo(0, 0); render();
+}
+function voltar() { voltarInterno(); }
 
-let sheetAberto = false, sheetHist = false, aposFechar = null;
+let sheetAberto = false, aposFechar = null;
 function abrirSheet(html) {
   $('#sheet').innerHTML = '<div class="grip"></div>' + html; $('#sheet').scrollTop = 0;
-  $('#sheetWrap').classList.add('on');
-  if (!sheetAberto) { sheetAberto = true; sheetHist = hPush(); }
+  $('#sheetWrap').classList.add('on'); sheetAberto = true;
 }
 function fecharSheetAgora() {
   sheetAberto = false; $('#sheetWrap').classList.remove('on');
@@ -616,14 +621,34 @@ function fecharSheetAgora() {
 }
 function fecharSheet(depois) {
   aposFechar = depois || null;
-  if (!sheetAberto) { if (aposFechar) { const f = aposFechar; aposFechar = null; f(); } return; }
-  if (sheetHist) history.back(); else fecharSheetAgora();
+  if (sheetAberto) fecharSheetAgora(); else if (aposFechar) { const f = aposFechar; aposFechar = null; f(); }
+}
+
+// Trava do botão/gesto de voltar: sempre existe uma "página extra" no histórico.
+// Quando o celular tenta voltar, o app consome isso, volta uma tela por dentro e recoloca a trava.
+const TRAVA = !PARAMS.has('loja');           // a loja pública das clientes funciona normal
+let travaOk = false, travaPendente = false;
+function colocarTrava() { if (!TRAVA) return; try { history.pushState({trava:Date.now()}, ''); travaOk = true; } catch (e) {} }
+function acaoVoltar() {
+  if ($('#dlg').classList.contains('on')) { $('#dlg').classList.remove('on'); return; }
+  if (sheetAberto) { fecharSheet(); return; }
+  if (LOJA_PREVIEW) { sairLoja(); return; }
+  if (LOJA_ID !== null || (USE_FB && !USER)) return;   // tela de login: só fica
+  if (PILHA.length) { voltarInterno(); return; }
+  if (V.tela !== 'inicio') { V = {tela:PAI[V.tela] || 'inicio', arg:null}; window.scrollTo(0, 0); render(); return; }
+  toast('Você está no início');
 }
 window.addEventListener('popstate', () => {
-  if (sheetAberto) { fecharSheetAgora(); return; }
-  if ($('#dlg').classList.contains('on')) { $('#dlg').classList.remove('on'); return; }
-  if (LOJA_ID === null && PILHA.length) voltarInterno();
+  if (!TRAVA) return;
+  acaoVoltar();
+  colocarTrava(); travaPendente = true;   // recoloca já e reforça no próximo toque
 });
+// O Chrome pode ignorar entradas criadas sem toque do usuário; reforça a trava a cada interação
+['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, () => {
+  if (!TRAVA) return;
+  if (!travaOk || travaPendente) { travaPendente = false; colocarTrava(); }
+}, {capture:true, passive:true}));
+if (TRAVA) { try { history.replaceState({base:1}, ''); } catch (e) {} colocarTrava(); }
 
 function render() {
   if (LOJA_ID !== null) return;
