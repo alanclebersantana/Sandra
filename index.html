@@ -14,8 +14,9 @@
   próprio aparelho (localStorage) — ideal para testar.
 
   MODO FIREBASE (sincroniza celular e PC + loja online):
-   1. Crie um projeto no Firebase, ative Authentication > E-mail/senha
-      e crie o usuário da Sandra (não há cadastro pelo app).
+   1. Crie um projeto no Firebase e ative Authentication > E-mail/senha.
+      No primeiro acesso, a Sandra toca em "Criar conta" no próprio app
+      (depois disso a opção "Criar conta" some da tela de login).
    2. Ative o Firestore e cole as regras abaixo.
    3. Preencha FIREBASE_CONFIG logo no início do <script>.
    4. Link da loja: index.html?loja=UID (aparece em Configurações).
@@ -33,6 +34,11 @@
       match /lojas/{uid} {
         allow read: if true;
         allow write: if request.auth != null && request.auth.uid == uid;
+      }
+      match /app/dono {
+        allow read: if true;
+        allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;
       }
       match /lojas/{uid}/pedidos/{id} {
         allow create: if request.resource.data.keys().hasOnly(['nome','telefone','itens','total','obs','criadoEm','status'])
@@ -462,27 +468,71 @@ function agendarRender() {
 }
 document.addEventListener('focusout', () => { if (renderPendente) { renderPendente = false; setTimeout(render, 50); } });
 
+let LG_MODO = 'entrar', DONO_EXISTE = null;
+function msgErroAuth(er) {
+  const c = (er && er.code) || '';
+  const M = {
+    'auth/invalid-email':'Esse e-mail não é válido. Confira se digitou certo.',
+    'auth/user-not-found':'Não existe conta com esse e-mail. Toque em “Criar conta”.',
+    'auth/wrong-password':'Senha incorreta.',
+    'auth/invalid-credential':'E-mail ou senha não conferem. Se ainda não criou a conta, toque em “Criar conta”.',
+    'auth/invalid-login-credentials':'E-mail ou senha não conferem. Se ainda não criou a conta, toque em “Criar conta”.',
+    'auth/email-already-in-use':'Já existe uma conta com esse e-mail. Toque em “Entrar”.',
+    'auth/weak-password':'A senha precisa ter pelo menos 6 caracteres.',
+    'auth/too-many-requests':'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.',
+    'auth/network-request-failed':'Sem internet. Confira a conexão e tente de novo.',
+    'auth/operation-not-allowed':'O login por e-mail e senha não está ativado no Firebase (Authentication → Método de login → E-mail/senha).',
+    'auth/configuration-not-found':'O Authentication ainda não foi ativado no Firebase (Authentication → Vamos começar).',
+    'auth/unauthorized-domain':'Este site não está autorizado no Firebase (Authentication → Configurações → Domínios autorizados).',
+    'auth/api-key-not-valid.-please-pass-a-valid-api-key.':'A chave do Firebase (apiKey) está errada no index.html.'
+  };
+  return M[c] || ('Não foi possível continuar' + (c ? ` (${c})` : '') + '.');
+}
 function telaLogin(msg) {
   $('#nav').innerHTML = '';
+  const criar = LG_MODO === 'criar';
   $('#app').innerHTML = `<div class="login">
     <div class="cav big">${esc(CFG.nome)}</div><div class="muted">${esc(CFG.titulo)}</div>
-    <form class="card" onsubmit="return entrar(event)">
-      <label class="f"><span>E-mail</span><input name="email" type="email" required autocomplete="username"></label>
-      <label class="f"><span>Senha</span><input name="senha" type="password" required autocomplete="current-password"></label>
-      <button class="btn full">Entrar</button>
-      <div class="center"><button type="button" class="link" onclick="esqueci()">Esqueci minha senha</button></div>
+    <form class="card" onsubmit="return ${criar ? 'criarConta' : 'entrar'}(event)">
+      <h3 style="margin:0 0 12px;font-size:18px">${criar ? 'Criar sua conta' : 'Entrar'}</h3>
+      <label class="f"><span>E-mail</span><input name="email" type="email" required autocomplete="username" autocapitalize="off" spellcheck="false"></label>
+      <label class="f"><span>Senha${criar ? ' (mínimo 6 caracteres)' : ''}</span><input name="senha" type="password" required minlength="${criar ? 6 : 1}" autocomplete="${criar ? 'new-password' : 'current-password'}"></label>
+      ${criar ? `<label class="f"><span>Repita a senha</span><input name="senha2" type="password" required minlength="6" autocomplete="new-password"></label>` : ''}
+      <button class="btn full" id="lgBtn">${criar ? 'Criar conta e entrar' : 'Entrar'}</button>
       <div class="err" id="lgErr">${esc(msg || '')}</div>
+      <div class="center" style="margin-top:6px">
+        ${criar ? `<button type="button" class="link" onclick="LG_MODO='entrar';telaLogin()">Já tenho conta · Entrar</button>`
+          : `<button type="button" class="link" onclick="esqueci()">Esqueci minha senha</button>
+             ${DONO_EXISTE ? '' : `<div style="margin-top:4px;border-top:1px dashed var(--line);padding-top:10px"><span class="sm muted">Primeiro acesso?</span> <button type="button" class="link" onclick="LG_MODO='criar';telaLogin()">Criar conta</button></div>`}`}
+      </div>
     </form></div>`;
+  if (DONO_EXISTE === null) verificarDono();
 }
+function verificarDono() {
+  FB.db.collection('app').doc('dono').get().then(d => { DONO_EXISTE = d.exists; if (!USER && LG_MODO === 'entrar' && DONO_EXISTE) telaLogin($('#lgErr') ? $('#lgErr').textContent : ''); })
+    .catch(() => { DONO_EXISTE = false; });
+}
+function lgOcupado(sim, txt) { const b = $('#lgBtn'); if (b) { b.disabled = sim; b.style.opacity = sim ? .6 : 1; if (txt) b.textContent = txt; } }
 function entrar(e) {
-  e.preventDefault(); const f = e.target;
-  FB.auth.signInWithEmailAndPassword(f.email.value.trim(), f.senha.value).catch(er => { $('#lgErr').textContent = 'E-mail ou senha incorretos.'; console.error(er); });
+  e.preventDefault(); const f = e.target; $('#lgErr').textContent = ''; lgOcupado(true, 'Entrando…');
+  FB.auth.signInWithEmailAndPassword(f.email.value.trim(), f.senha.value)
+    .catch(er => { console.error(er); $('#lgErr').textContent = msgErroAuth(er); lgOcupado(false, 'Entrar'); });
+  return false;
+}
+function criarConta(e) {
+  e.preventDefault(); const f = e.target; $('#lgErr').textContent = '';
+  if (f.senha.value !== f.senha2.value) { $('#lgErr').textContent = 'As duas senhas não estão iguais.'; return false; }
+  lgOcupado(true, 'Criando…');
+  FB.auth.createUserWithEmailAndPassword(f.email.value.trim(), f.senha.value)
+    .then(cred => FB.db.collection('app').doc('dono').set({uid:cred.user.uid, criadoEm:Date.now()}).catch(() => {}))
+    .then(() => { DONO_EXISTE = true; LG_MODO = 'entrar'; toast('Conta criada ✓'); })
+    .catch(er => { console.error(er); $('#lgErr').textContent = msgErroAuth(er); lgOcupado(false, 'Criar conta e entrar'); });
   return false;
 }
 function esqueci() {
   const em = document.querySelector('.login [name=email]').value.trim();
   if (!em) return $('#lgErr').textContent = 'Digite seu e-mail acima primeiro.';
-  FB.auth.sendPasswordResetEmail(em).then(() => toast('Enviamos um link para seu e-mail')).catch(() => $('#lgErr').textContent = 'Não foi possível enviar.');
+  FB.auth.sendPasswordResetEmail(em).then(() => toast('Enviamos um link para seu e-mail')).catch(er => $('#lgErr').textContent = msgErroAuth(er));
 }
 function sair() { perguntar('Sair da conta neste aparelho?', () => { UNSUBS.forEach(u => u()); UNSUBS = []; FB.auth.signOut(); }, 'Sair'); }
 
