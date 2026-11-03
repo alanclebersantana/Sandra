@@ -624,11 +624,17 @@ function fecharSheet(depois) {
   if (sheetAberto) fecharSheetAgora(); else if (aposFechar) { const f = aposFechar; aposFechar = null; f(); }
 }
 
-// Trava do botão/gesto de voltar: sempre existe uma "página extra" no histórico.
-// Quando o celular tenta voltar, o app consome isso, volta uma tela por dentro e recoloca a trava.
+// Trava do botão/gesto de voltar.
+// O Chrome ignora entradas de histórico criadas sem toque do usuário (e depois de um "voltar"
+// sem toque novo). Por isso a reserva de voltas é criada SEMPRE dentro de um toque na tela,
+// e no "voltar" o app só consome uma volta da reserva, sem recolocar nada.
 const TRAVA = !PARAMS.has('loja');           // a loja pública das clientes funciona normal
-let travaOk = false, travaPendente = false;
-function colocarTrava() { if (!TRAVA) return; try { history.pushState({trava:Date.now()}, ''); travaOk = true; } catch (e) {} }
+const RESERVA = 15;
+let navIdx = 0;
+function encherTrava() {
+  if (!TRAVA || navIdx >= RESERVA) return;
+  try { while (navIdx < RESERVA) { navIdx++; history.pushState({i:navIdx}, ''); } } catch (e) {}
+}
 function acaoVoltar() {
   if ($('#dlg').classList.contains('on')) { $('#dlg').classList.remove('on'); return; }
   if (sheetAberto) { fecharSheet(); return; }
@@ -638,17 +644,14 @@ function acaoVoltar() {
   if (V.tela !== 'inicio') { V = {tela:PAI[V.tela] || 'inicio', arg:null}; window.scrollTo(0, 0); render(); return; }
   toast('Você está no início');
 }
-window.addEventListener('popstate', () => {
+window.addEventListener('popstate', e => {
   if (!TRAVA) return;
+  navIdx = (e.state && typeof e.state.i === 'number') ? e.state.i : 0;
   acaoVoltar();
-  colocarTrava(); travaPendente = true;   // recoloca já e reforça no próximo toque
 });
-// O Chrome pode ignorar entradas criadas sem toque do usuário; reforça a trava a cada interação
-['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, () => {
-  if (!TRAVA) return;
-  if (!travaOk || travaPendente) { travaPendente = false; colocarTrava(); }
-}, {capture:true, passive:true}));
-if (TRAVA) { try { history.replaceState({base:1}, ''); } catch (e) {} colocarTrava(); }
+// eventos que contam como "toque do usuário" para o navegador
+['click', 'pointerup', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, encherTrava, {capture:true, passive:true}));
+if (TRAVA) { try { history.replaceState({i:0}, ''); } catch (e) {} }
 
 function render() {
   if (LOJA_ID !== null) return;

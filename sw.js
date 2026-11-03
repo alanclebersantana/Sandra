@@ -1,6 +1,6 @@
 // Sandra Silveira · service worker
 // Ao publicar uma versão nova do app, troque a VERSAO abaixo.
-const VERSAO = 'sandra-v1';
+const VERSAO = 'sandra-v2';
 const ARQUIVOS = ['./', './index.html', './instalar.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -21,7 +21,7 @@ self.addEventListener('fetch', e => {
 
   // Páginas: rede primeiro (pega versão nova), cache se estiver sem internet
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then(r => { const c = r.clone(); caches.open(VERSAO).then(ca => ca.put('./index.html', c)); return r; })
+    e.respondWith(fetch(req, {cache:'no-store'}).then(r => { const c = r.clone(); caches.open(VERSAO).then(ca => ca.put('./index.html', c)); return r; })
       .catch(() => caches.match('./index.html')));
     return;
   }
